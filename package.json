@@ -3,18 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "description": "Slides for my talk about JavaScript Shells",
-  "main": "index.js",
+  "main": "index.html",
   "scripts": {
-    "start": "http-server",
-    "deploy": "gh-pages -d . -m \"Updated at $(date +'%a, %d %b %Y, %T, %Z')\" --add",
-    "prepush": "npm run deploy"
+    "start": "http-server"
   },
   "author": "Denys Dovhan <email@denysdovhan.com> (http://denysdovhan.com)",
   "license": "MIT",
   "dependencies": {},
   "devDependencies": {
-    "gh-pages": "^1.0.0",
-    "http-server": "^0.10.0",
-    "husky": "^0.14.3"
+    "http-server": "^0.10.0"
   }
 }
