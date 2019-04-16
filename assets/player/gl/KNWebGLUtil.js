@@ -3,7 +3,7 @@
  * Keynote HTML Player
  *
  * Created by Tungwei Cheng
- * Copyright (c) 2016 Apple Inc. All rights reserved.
+ * Copyright (c) 2016-2018 Apple Inc. All rights reserved.
  */
 
 var KNWebGLUtil = {};
@@ -122,6 +122,18 @@ KNWebGLUtil.bindTextureWithImage = function(gl, image) {
 KNWebGLUtil.bindDynamicBufferWithData = function(gl, attribLoc, buffer, data, size) {
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
+
+    // we need to enable attrib loc to work with data buffer
+    gl.enableVertexAttribArray(attribLoc);
+    gl.vertexAttribPointer(attribLoc, size, gl.FLOAT, false, 0, 0);
+};
+
+KNWebGLUtil.bindBufferWithData = function(gl, attribLoc, buffer, data, size, bufferUsage) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), bufferUsage);
+
+    // we need to enable attrib loc to work with data buffer
+    gl.enableVertexAttribArray(attribLoc);
     gl.vertexAttribPointer(attribLoc, size, gl.FLOAT, false, 0, 0);
 };
 
@@ -140,8 +152,16 @@ KNWebGLUtil.setPoint3DAtIndexForAttribute = function(point, index, attribute) {
     attribute.size = 3;
 };
 
-KNWebGLUtil.setFloatAtIndexForAttribute = function(float, index, attribute) {
-    attribute[index] = float;
+KNWebGLUtil.setPoint4DAtIndexForAttribute = function(point, index, attribute) {
+    attribute[index*4] = point.x;
+    attribute[index*4+1] = point.y;
+    attribute[index*4+2] = point.z;
+    attribute[index*4+3] = point.w;
+    attribute.size = 4;
+};
+
+KNWebGLUtil.setFloatAtIndexForAttribute = function(f, index, attribute) {
+    attribute[index] = f;
 };
 
 KNWebGLUtil.getPoint2DForArrayAtIndex = function(attrib, index) {
@@ -159,14 +179,23 @@ KNWebGLUtil.getPoint3DForArrayAtIndex = function(attrib, index) {
     return point;
 };
 
-KNWebGLUtil.bindAllAvailableAttributesToBuffers = function(gl, attribs, bufferdata, size, buffer) {
+KNWebGLUtil.getPoint4DForArrayAtIndex = function(attrib, index) {
+    var point = {};
+    point.x = attrib[index*4];
+    point.y = attrib[index*4 + 1];
+    point.z = attrib[index*4 + 2];
+    point.w = attrib[index*4 + 3];
+    return point;
+};
+
+KNWebGLUtil.bindAllAvailableAttributesToBuffers = function(gl, attribs, bufferdata, size, buffer, bufferUsage) {
     for (var obj in attribs) {
         var attribute = attribs[obj];
         if (buffer[obj] == undefined) {
             buffer[obj] = gl.createBuffer();
         }
 
-        KNWebGLUtil.bindDynamicBufferWithData(gl, attribute, buffer[obj], bufferdata[obj], size[obj]);
+        KNWebGLUtil.bindBufferWithData(gl, attribute, buffer[obj], bufferdata[obj], size[obj], bufferUsage);
     }
 };
 
@@ -209,6 +238,15 @@ WebGraphics.makePoint3D = function(x, y, z) {
     return obj;
 };
 
+WebGraphics.makePoint4D = function(x, y, z, w) {
+    var obj = {};
+    obj.x = x;
+    obj.y = y;
+    obj.z = z;
+    obj.w = w;
+    return obj;
+};
+
 WebGraphics.makeRect = function(x,y, width, height) {
     var obj = {};
     obj.x = x;
@@ -239,6 +277,15 @@ WebGraphics.multiplyPoint3DByScalar = function(point, scalar) {
     return obj;
 };
 
+WebGraphics.multiplyPoint4DByScalar = function(point, scalar) {
+    var obj = {};
+    obj.x = point.x * scalar;
+    obj.y = point.y * scalar;
+    obj.z = point.z * scalar;
+    obj.w = point.w * scalar;
+    return obj;
+};
+
 WebGraphics.addPoint3DToPoint3D = function(a, b) {
     var obj = {};
     obj.x = a.x + b.x;
@@ -262,6 +309,41 @@ WebGraphics.randomBetween = function(min, max) {
     x += min;
     return x;
 };
+
+WebGraphics.doubleBetween = function(randMin, randMax) {
+    var result = 0;
+
+    var bottom, top;
+    if (randMin < randMax) {
+        bottom = randMin;
+        top = randMax;
+    } else {
+        bottom = randMax;
+        top = randMin;
+    }
+
+    // rnd: random in range [0.0 -> 1.0)
+    // RandBetween(bottom, top) = ((top - bottom) * rnd) + bottom
+
+    // To avoid overflows, distribute the multiplication:
+    // = top*rand - bottom*rand + bottom
+
+    var rnd = Math.random();
+    var topMult = top * rnd;
+    var bottomMult = bottom * rnd;
+
+    if ((bottom >= 0.0) == (top >= 0.0)) {
+        // Both are the same sign, do the subtraction first to avoid overflow.
+        result = topMult - bottomMult;
+        result = result + bottom;
+    } else {
+        // The signs differ, add bottom in first to avoid overflow.
+        result = topMult + bottom;
+        result = result - bottomMult;
+    }
+
+    return result;
+}
 
 WebGraphics.mix = function(x, y, a) {
     return x * (1 - a) + (y * a);
@@ -429,7 +511,7 @@ WebGraphics.colorWithHSBA = function(hue, saturation, brightness, alpha) {
     p1 = brightness * (1-saturation);
     p2 = brightness * (1.0 - (saturation * frac));
     p3 = brightness * (1.0 - (saturation * (1.0 - frac)));
-    switch (hueTimesSix) {
+    switch (parseInt(hueTimesSix)) {
         case 0:
             red = brightness;
             green = p3;
@@ -464,6 +546,20 @@ WebGraphics.colorWithHSBA = function(hue, saturation, brightness, alpha) {
     obj.red = red;
     obj.blue = blue;
     obj.green = green;
+    return obj;
+};
+
+WebGraphics.makeMat3WithAffineTransform = function(affineTransform) {
+    var obj = new Float32Array(9);
+    obj[0] = affineTransform[0];
+    obj[1] = affineTransform[1];
+    obj[2] = 0;
+    obj[3] = affineTransform[2];
+    obj[4] = affineTransform[3];
+    obj[5] = 0;
+    obj[6] = affineTransform[4];
+    obj[7] = affineTransform[5];
+    obj[8] = 1;
     return obj;
 };
 
@@ -776,6 +872,10 @@ Matrix4.prototype = {
     }
 };
 
+function TSUMix(a, b, x) {
+    return a + (b - a) * x;
+}
+
 //sinusoidal timing function
 function TSUSineMap(x) {
     return (Math.sin(x * Math.PI - (Math.PI / 2)) + 1) * 0.5;
@@ -796,7 +896,39 @@ function TwistFX(location, percent) {
     }
 }
 
-// CGRectIntersection
+//CGAffineTransformMakeRotation
+function CGAffineTransformMakeRotation(angle) {
+    var sine, consine;
+
+    sine = Math.sin(angle);
+    cosine = Math.cos(angle);
+
+    return [cosine, sine, -sine, cosine, 0, 0];
+}
+
+//CGAffineTransformEqualToTransform
+function CGAffineTransformEqualToTransform(t1, t2) {
+    return t1.a === t2.a && t1.b === t2.b && t1.c === t2.c && t1.d === t2.d && t1.tx === t2.tx && t1.ty === t2.ty;
+}
+
+//CATransform3DEqualToTransform
+function CATransform3DEqualToTransform(a, b) {
+    var result = a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5] && a[6] === b[6] && a[7] === b[7] && a[8] === b[8] && a[9] === b[9] && a[10] === b[10] && a[11] === b[11] && a[12] === b[12] && a[13] === b[13] && a[14] === b[14] && a[15] === b[15];
+
+    return result;
+}
+
+//CGPointMake
+function CGPointMake(x, y) {
+    var p = {
+        x: x,
+        y: y
+    };
+
+    return p;
+}
+
+//CGRectIntersection
 function CGRectIntersection(r1, r2) {
     var r = {
         "origin": {
@@ -831,7 +963,7 @@ function CGRectIntersection(r1, r2) {
     r.size.height = y2 - y1;
 
     return r;
-};
+}
 
 // CGRectIntegral
 function CGRectIntegral(rect) {
@@ -851,7 +983,159 @@ function CGRectIntegral(rect) {
     r.size.width = Math.ceil(rect.origin.x + rect.size.width) - r.origin.x;
     r.size.height = Math.ceil(rect.origin.y + rect.size.height) - r.origin.y;
     return r;
+}
+
+// CGRectGetMinX
+function CGRectGetMinX(rect) {
+    return rect.origin.x;
+}
+
+// CGRectGetMinY
+function CGRectGetMinY(rect) {
+    return rect.origin.y;
+}
+
+// CGRectGetMidX
+function CGRectGetMidX(rect) {
+    return rect.origin.x + rect.size.width / 2;
+}
+
+// CGRectGetMidY
+function CGRectGetMidY(rect) {
+    return rect.origin.y + rect.size.height / 2;
+}
+
+// CGRectGetMaxX
+function CGRectGetMaxX(rect) {
+    return rect.origin.x + rect.size.width;
+}
+
+// CGRectGetMaxY
+function CGRectGetMaxY(rect) {
+    return rect.origin.y + rect.size.height;
+}
+
+// CGRectEqualToRect
+function CGRectEqualToRect(rect1, rect2) {
+    return (rect1.origin.x == rect2.origin.x) && (rect1.origin.y == rect2.origin.y) && (rect1.size.width == rect2.size.width) && (rect1.size.height == rect2.size.height);
+}
+
+// CGRectMake
+function CGRectMake(x, y, width, height) {
+    var r = {
+        "origin": {
+            "x": x,
+            "y": y
+        },
+        "size": {
+            "width": width,
+            "height": height
+        }
+    };
+
+    return r;
+}
+
+// CGSizeMake
+function CGSizeMake(width, height) {
+    var sizeOut = {};
+    sizeOut.width = width;
+    sizeOut.height = height;
+
+    return sizeOut;
+}
+
+// CGSizeEqualToSize
+function CGSizeEqualToSize (size1, size2) {
+    return size1.width === size2.width && size1.height === size2.height;
+}
+
+// CGSizeZero
+var CGSizeZero = {
+    "width": 0,
+    "height": 0
 };
+
+// CGRectZero
+var CGRectZero = {
+    "origin": {
+        "x": 0,
+        "y": 0
+    },
+    "size": {
+        "width": 0,
+        "height": 0
+    }
+};
+
+// TSDRectUnit
+var TSDRectUnit = {
+    "origin": {
+        "x": 0,
+        "y": 0
+    },
+    "size": {
+        "width": 1,
+        "height": 1
+    }
+};
+
+//TSDMixFloats
+function TSDMixFloats(a, b, fraction) {
+    return a * (1.0 - fraction) + b * fraction;
+}
+
+// TSDCenterOfRect
+function TSDCenterOfRect(rect) {
+    return WebGraphics.makePoint(CGRectGetMidX(rect), CGRectGetMidY(rect));
+}
+
+// TSDPointFromNormalizedRect
+function TSDPointFromNormalizedRect(pt, rect) {
+    return WebGraphics.makePoint(rect.origin.x + pt.x * rect.size.width, rect.origin.y + pt.y * rect.size.height);
+}
+
+// TSDRectWithPoints
+function TSDRectWithPoints(a, b) {
+	// smallest rect enclosing two points
+    var minX = Math.min(a.x, b.x);
+    var maxX = Math.max(a.x, b.x);
+    var minY = Math.min(a.y, b.y);
+    var maxY = Math.max(a.y, b.y);
+
+    return CGRectMake(minX, minY, maxX - minX, maxY - minY);
+}
+
+function TSDGLColor(r, g, b, a) {
+    var color = {
+        r: r,
+        g: g,
+        b: b,
+        a: a
+    };
+
+    return color;
+}
+
+var TSD8bitColorDenominator  = 0.003906402593851;
+
+/// Creates a TSDGLColor4f from a 32-bit BGRA-encoded unsigned int
+function TSDGLColor4fMakeWithUInt(anInt) {
+    var color = WebGraphics.makePoint4D(
+        ((anInt & 0x00ff0000) >> 16) * TSD8bitColorDenominator,
+        ((anInt & 0x0000ff00) >> 8) * TSD8bitColorDenominator,
+        ((anInt & 0x000000ff)) * TSD8bitColorDenominator,
+        ((anInt & 0xff000000) >> 24) * TSD8bitColorDenominator
+    );
+
+    return color;
+}
+
+// TSUReverseSquare
+function TSUReverseSquare(x) {
+    var reverse = 1.0 - x;
+    return 1.0 - reverse * reverse;
+}
 
 window.requestAnimFrame = (function() {
     return window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame
